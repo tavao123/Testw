@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Detecção de Objetos na Câmera</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+  <style>
+    body {
+      margin: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+      background: #111;
+      color: white;
+    }
+    video, canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      object-fit: cover;
+    }
+    #loading {
+      position: absolute;
+      top: 20px;
+      font-size: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div id="loading">Carregando modelo...</div>
+  <video id="video" autoplay playsinline></video>
+  <canvas id="canvas"></canvas>
+
+  <script>
+    const video = document.getElementById("video");
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+
+    // Solicitar câmera frontal
+    async function startCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "user" } // "user" = frontal | "environment" = traseira
+        });
+        video.srcObject = stream;
+      } catch (err) {
+        alert("Erro ao acessar a câmera: " + err);
+      }
+    }
+
+    async function runDetection() {
+      const model = await cocoSsd.load();
+      document.getElementById("loading").style.display = "none";
+
+      function detectFrame() {
+        model.detect(video).then(predictions => {
+          // Ajusta canvas para o tamanho do vídeo
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+          // Desenha as detecções
+          predictions.forEach(p => {
+            ctx.beginPath();
+            ctx.rect(...p.bbox);
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = "lime";
+            ctx.fillStyle = "lime";
+            ctx.stroke();
+            ctx.fillText(`${p.class} (${(p.score * 100).toFixed(1)}%)`, p.bbox[0], p.bbox[1] > 10 ? p.bbox[1] - 5 : 10);
+          });
+
+          requestAnimationFrame(detectFrame);
+        });
+      }
+
+      detectFrame();
+    }
+
+    startCamera().then(runDetection);
+  </script>
+</body>
+</html>
