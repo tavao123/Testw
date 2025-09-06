@@ -1,88 +1,268 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
+<!DOCTYPE html><html lang="pt-br">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Detecção de Objetos na Câmera</title>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Test</title>
   <style>
-    body {
-      margin: 0;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      flex-direction: column;
-      background: #111;
-      color: white;
-    }
-    video, canvas {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      object-fit: cover;
-    }
-    #loading {
-      position: absolute;
-      top: 20px;
-      font-size: 20px;
-    }
+    :root { --bg:#0b0b0f; --fg:#eaeaf2; --muted:#a2a2b3; --accent:#6ee7ff; }
+    html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial,"Noto Sans",sans-serif}
+    .wrap{max-width:960px;margin:0 auto;padding:16px;display:grid;gap:12px}
+    header{display:flex;align-items:center;justify-content:space-between;gap:12px}
+    h1{font-size:clamp(18px,3vw,28px);margin:0}
+    .controls{display:flex;gap:8px;flex-wrap:wrap}
+    button, select{background:#1a1a22;color:var(--fg);border:1px solid #282838;border-radius:12px;padding:10px 14px;font-weight:600;cursor:pointer}
+    button:hover{border-color:#3a3a4a}
+    #info{font-size:14px;color:var(--muted)}
+    .stage{position:relative;aspect-ratio:16/9;border:1px solid #1f2230;border-radius:16px;overflow:hidden;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+    video, canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+    canvas{pointer-events:none}
+    .badge{position:absolute;left:10px;bottom:10px;background:rgba(0,0,0,.5);backdrop-filter:blur(6px);padding:6px 10px;border-radius:999px;font-size:12px;border:1px solid #2a2f45}
+    .legend{display:flex;gap:8px;flex-wrap:wrap}
+    .legend span{background:#12121a;border:1px solid #24243a;padding:6px 10px;border-radius:10px;font-size:12px}
+    a{color:var(--accent)}
   </style>
 </head>
 <body>
-  <div id="loading">Carregando modelo...</div>
-  <video id="video" autoplay playsinline></video>
+  <div class="wrap">
+    <header>
+      <h1>Detecção de Objetos em Tempo Real (Câmera do Dispositivo)</h1>
+      <div class="controls">
+        <button id="btnStart">Iniciar</button>
+        <button id="btnStop" disabled>Parar</button>
+        <select id="cameraSelect" title="Escolher câmera"></select>
+      </div>
+    </header><div id="info">Dica: no celular, permita o uso da câmera e use HTTPS. Tentaremos usar a câmera frontal (<code>facingMode: 'user'</code>), mas você pode trocar no seletor.</div>
+
+<div class="stage">
+  <video id="video" playsinline autoplay muted></video>
   <canvas id="canvas"></canvas>
+  <div class="badge" id="status">Modelo: carregando…</div>
+</div>
 
-  <script>
-    const video = document.getElementById("video");
-    const canvas = document.getElementById("canvas");
-    const ctx = canvas.getContext("2d");
+<div class="legend">
+  <span>Modelo: COCO‑SSD (TFJS) – ~80 classes comuns</span>
+  <span>Privado: tudo roda <em>no seu navegador</em></span>
+  <span>FPS alvo: adaptativo</span>
+</div>
 
-    // Solicitar câmera frontal
-    async function startCamera() {
+  </div>  <!-- Carrega TensorFlow.js e o modelo COCO-SSD via CDN -->  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4"></script>  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2"></script>  <script>
+    // =============================
+    // Configuração geral
+    // =============================
+    const els = {
+      video: document.getElementById('video'),
+      canvas: document.getElementById('canvas'),
+      status: document.getElementById('status'),
+      btnStart: document.getElementById('btnStart'),
+      btnStop: document.getElementById('btnStop'),
+      cameraSelect: document.getElementById('cameraSelect'),
+    };
+
+    let model = null;           // Modelo COCO-SSD
+    let stream = null;          // MediaStream atual
+    let rafId = null;           // requestAnimationFrame atual
+    let running = false;        // Flag de execução
+
+    // Lista de cores predefinidas (reprodutíveis) para rótulos
+    const colorFor = (() => {
+      const cache = new Map();
+      return (label) => {
+        if (cache.has(label)) return cache.get(label);
+        // Gera uma cor HSL baseada no hash do label
+        const hash = Array.from(label).reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 0);
+        const h = hash % 360; // matiz
+        const s = 70, l = 50;
+        const color = `hsl(${h} ${s}% ${l}%)`;
+        cache.set(label, color);
+        return color;
+      };
+    })();
+
+    // Util: Atualiza status/badge
+    function setStatus(text) {
+      els.status.textContent = text;
+    }
+
+    // =============================
+    // Câmeras: enumerar e trocar
+    // =============================
+    async function listCameras() {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "user" } // "user" = frontal | "environment" = traseira
-        });
-        video.srcObject = stream;
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoInputs = devices.filter(d => d.kind === 'videoinput');
+        els.cameraSelect.innerHTML = '';
+        for (const d of videoInputs) {
+          const opt = document.createElement('option');
+          opt.value = d.deviceId;
+          opt.textContent = d.label || `Câmera ${els.cameraSelect.length + 1}`;
+          els.cameraSelect.appendChild(opt);
+        }
       } catch (err) {
-        alert("Erro ao acessar a câmera: " + err);
+        console.warn('Não foi possível listar câmeras:', err);
       }
     }
 
-    async function runDetection() {
-      const model = await cocoSsd.load();
-      document.getElementById("loading").style.display = "none";
-
-      function detectFrame() {
-        model.detect(video).then(predictions => {
-          // Ajusta canvas para o tamanho do vídeo
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-          // Desenha as detecções
-          predictions.forEach(p => {
-            ctx.beginPath();
-            ctx.rect(...p.bbox);
-            ctx.lineWidth = 3;
-            ctx.strokeStyle = "lime";
-            ctx.fillStyle = "lime";
-            ctx.stroke();
-            ctx.fillText(`${p.class} (${(p.score * 100).toFixed(1)}%)`, p.bbox[0], p.bbox[1] > 10 ? p.bbox[1] - 5 : 10);
-          });
-
-          requestAnimationFrame(detectFrame);
-        });
+    async function startCamera(deviceId = null, preferFront = true) {
+      stopCamera();
+      const constraints = {
+        audio: false,
+        video: deviceId ? { deviceId: { exact: deviceId } } : {
+          // Preferência pela câmera frontal do celular
+          facingMode: preferFront ? { ideal: 'user' } : { ideal: 'environment' },
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        }
+      };
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        els.video.srcObject = stream;
+        await els.video.play();
+        await listCameras();
+        // Seleciona a câmera atual no dropdown, se houver deviceId
+        const track = stream.getVideoTracks()[0];
+        const settings = track.getSettings();
+        const currentId = track.getCapabilities ? track.getCapabilities().deviceId : settings.deviceId;
+        // Marca a opção correspondente (se conhecida)
+        Array.from(els.cameraSelect.options).forEach(o => { if (o.value === settings.deviceId) o.selected = true; });
+        resizeCanvas();
+        return true;
+      } catch (err) {
+        console.error('Erro ao abrir câmera:', err);
+        alert('Não foi possível acessar a câmera. Verifique permissões e se está em HTTPS.');
+        return false;
       }
-
-      detectFrame();
     }
 
-    startCamera().then(runDetection);
-  </script>
-</body>
+    function stopCamera() {
+      if (stream) {
+        stream.getTracks().forEach(t => t.stop());
+        stream = null;
+      }
+    }
+
+    // =============================
+    // Desenho no canvas
+    // =============================
+    function resizeCanvas() {
+      const { videoWidth: w, videoHeight: h } = els.video;
+      if (!w || !h) return;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      els.canvas.width = Math.floor(w * dpr);
+      els.canvas.height = Math.floor(h * dpr);
+      els.canvas.style.width = '100%';
+      els.canvas.style.height = '100%';
+    }
+
+    function drawDetections(predictions) {
+      const ctx = els.canvas.getContext('2d');
+      ctx.clearRect(0, 0, els.canvas.width, els.canvas.height);
+      if (!predictions) return;
+
+      const scaleX = els.canvas.width / els.video.videoWidth;
+      const scaleY = els.canvas.height / els.video.videoHeight;
+
+      ctx.lineWidth = 3;
+      ctx.font = `${Math.max(12, Math.round(14 * (els.canvas.width/640)))}px system-ui, sans-serif`;
+
+      for (const p of predictions) {
+        const [x, y, w, h] = p.bbox; // baseado no tamanho original do vídeo
+        const label = `${p.class} ${(p.score * 100).toFixed(0)}%`;
+        const color = colorFor(p.class);
+        ctx.strokeStyle = color;
+        ctx.fillStyle = color;
+
+        // Caixa
+        ctx.strokeRect(x * scaleX, y * scaleY, w * scaleX, h * scaleY);
+
+        // Fundo do rótulo
+        const pad = 6;
+        const textW = ctx.measureText(label).width;
+        const textH = parseInt(ctx.font, 10) + 6;
+        ctx.fillRect(x * scaleX, y * scaleY - textH, textW + pad * 2, textH);
+
+        // Texto
+        ctx.fillStyle = '#0b0b0f';
+        ctx.fillText(label, x * scaleX + pad, y * scaleY - 6);
+      }
+    }
+
+    // =============================
+    // Loop de inferência (adaptativo)
+    // =============================
+    let lastTime = 0;
+    const MIN_INTERVAL = 1000 / 18; // alvo ~18 FPS para equilíbrio
+
+    async function detectLoop(ts) {
+      if (!running) return;
+      rafId = requestAnimationFrame(detectLoop);
+      if (!model || !els.video.videoWidth) return;
+
+      if (ts - lastTime < MIN_INTERVAL) return; // simples throttle
+      lastTime = ts;
+      try {
+        const predictions = await model.detect(els.video);
+        drawDetections(predictions);
+        setStatus(`Rodando • ${predictions.length} objeto(s)`);
+      } catch (err) {
+        console.warn('Falha na inferência:', err);
+      }
+    }
+
+    // =============================
+    // Inicialização do modelo e eventos
+    // =============================
+    async function initModel() {
+      setStatus('Modelo: carregando…');
+      try {
+        // Opção: base 'lite_mobilenet_v2' para dispositivos fracos (comentado para manter padrão)
+        // model = await cocoSsd.load({ base: 'lite_mobilenet_v2' });
+        model = await cocoSsd.load();
+        setStatus('Modelo: pronto');
+      } catch (err) {
+        console.error('Erro ao carregar modelo:', err);
+        alert('Falha ao carregar o modelo COCO-SSD. Verifique a conexão ou o CDN.');
+      }
+    }
+
+    async function startAll() {
+      if (running) return;
+      await initModel();
+      const ok = await startCamera(null, /*preferFront=*/true);
+      if (!ok) return;
+      running = true;
+      els.btnStart.disabled = true;
+      els.btnStop.disabled = false;
+      detectLoop();
+    }
+
+    function stopAll() {
+      running = false;
+      if (rafId) cancelAnimationFrame(rafId);
+      stopCamera();
+      const ctx = els.canvas.getContext('2d');
+      ctx && ctx.clearRect(0,0,els.canvas.width,els.canvas.height);
+      els.btnStart.disabled = false;
+      els.btnStop.disabled = true;
+      setStatus('Parado');
+    }
+
+    // Eventos UI
+    els.btnStart.addEventListener('click', startAll);
+    els.btnStop.addEventListener('click', stopAll);
+    els.cameraSelect.addEventListener('change', async (e) => {
+      const id = e.target.value;
+      if (!id) return;
+      await startCamera(id);
+    });
+
+    // Ajusta canvas quando o vídeo ganhar dimensões
+    els.video.addEventListener('loadedmetadata', resizeCanvas);
+    window.addEventListener('resize', resizeCanvas);
+
+    // Pré-lista as câmeras (alguns navegadores só revelam labels após permissão)
+    if (navigator.mediaDevices?.enumerateDevices) listCameras();
+
+    // Tenta iniciar automaticamente se o navegador permitir autoplay
+    // startAll(); // comente se não quiser auto‑start
+  </script></body>
 </html>
